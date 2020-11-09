@@ -1,0 +1,16 @@
+[workspace]
+members = ["macros"]
+
+[package]
+name = "embedded-error-chain"
+version = "0.1.0"
+authors = ["Dominik Gschwind <dominik.gschwind99@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+macros = { path = "macros", package = "embedded-error-chain-macros", version = "0.1" }
+
+[features]
+default = ["panic-on-overflow"]
+
+panic-on-overflow = []
