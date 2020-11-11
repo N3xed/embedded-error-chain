@@ -9,8 +9,10 @@ edition = "2018"
 
 [dependencies]
 macros = { path = "macros", package = "embedded-error-chain-macros", version = "0.1" }
+static_assertions = { version = "1.1.0", optional = true }
 
 [features]
-default = ["panic-on-overflow"]
+default = ["panic-on-overflow", "static_assertions"]
 
 panic-on-overflow = []
+nightly = []
