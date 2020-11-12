@@ -9,10 +9,12 @@ enum TestError1 {
 impl ErrorCategory for TestError1 {
     const NAME: &'static str = "ErrorCategory";
 
-    type C0 = Unused;
-    type C1 = Unused;
-    type C2 = Unused;
-    type C3 = TestError3;
+    type L0 = Unused;
+    type L1 = Unused;
+    type L2 = Unused;
+    type L3 = TestError3;
+    type L4 = Unused;
+    type L5 = Unused;
 }
 
 impl From<ErrorCode> for TestError1 {
@@ -38,10 +40,12 @@ enum TestError2 {
 impl ErrorCategory for TestError2 {
     const NAME: &'static str = "ErrorCategory";
 
-    type C0 = TestError1;
-    type C1 = Unused;
-    type C2 = Unused;
-    type C3 = Unused;
+    type L0 = TestError1;
+    type L1 = Unused;
+    type L2 = Unused;
+    type L3 = Unused;
+    type L4 = Unused;
+    type L5 = Unused;
 }
 
 impl From<ErrorCode> for TestError2 {
@@ -67,10 +71,12 @@ enum TestError3 {
 impl ErrorCategory for TestError3 {
     const NAME: &'static str = "ErrorCategory";
 
-    type C0 = TestError3;
-    type C1 = TestError1;
-    type C2 = TestError2;
-    type C3 = Unused;
+    type L0 = TestError3;
+    type L1 = TestError1;
+    type L2 = TestError2;
+    type L3 = Unused;
+    type L4 = Unused;
+    type L5 = Unused;
 }
 
 impl From<ErrorCode> for TestError3 {

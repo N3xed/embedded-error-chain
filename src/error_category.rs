@@ -10,7 +10,7 @@ use core::fmt::{self, Debug, Formatter};
 /// This function serves multiple purposes:
 /// 1. If `f` is [`Some`] then this functions formats `error_code` using `f` with
 ///   the following format:  
-///    `- {ErrorCategory::NAME}({error_code}): {debug fmt of error_code}`
+///    `- {ErrorCategory::NAME}({error_code}): {<error_code as T>:?}`
 /// 2. If `next_formatter` is `Some(index)` then it returns the chained formatter of the
 ///    associated [`ErrorCategory`] indexed by `index`. A `Some(`[`ErrorCodeFormatterVal`]`)` is
 ///    returned if `index` is within bounds of the chainable categories (see
@@ -45,20 +45,36 @@ impl ErrorCodeFormatterVal {
         self.0
     }
 }
+
+/// A trait that implements the logic for debug printing and [`ErrorCode`] conversion. It
+/// also specifies the links to other error categories that allows [`Error`](crate::Error)s of
+/// different types to be chained.
+///
+/// Note: Only up to 6 linked error categories are allowed.
 pub trait ErrorCategory: Copy + Into<ErrorCode> + From<ErrorCode> + Debug {
     const NAME: &'static str;
 
-    type C0: ErrorCategory;
-    type C1: ErrorCategory;
-    type C2: ErrorCategory;
-    type C3: ErrorCategory;
+    /// Type of linked error category 0.
+    type L0: ErrorCategory;
+    /// Type of linked error category 1.
+    type L1: ErrorCategory;
+    /// Type of linked error category 2.
+    type L2: ErrorCategory;
+    /// Type of linked error category 3.
+    type L3: ErrorCategory;
+    /// Type of linked error category 4.
+    type L4: ErrorCategory;
+    /// Type of linked error category 5.
+    type L5: ErrorCategory;
 
     fn chainable_category_formatters() -> &'static [ErrorCodeFormatter] {
         &[
-            format_chained::<Self::C0>,
-            format_chained::<Self::C1>,
-            format_chained::<Self::C2>,
-            format_chained::<Self::C3>,
+            format_chained::<Self::L0>,
+            format_chained::<Self::L1>,
+            format_chained::<Self::L2>,
+            format_chained::<Self::L3>,
+            format_chained::<Self::L4>,
+            format_chained::<Self::L5>,
         ]
     }
 }
@@ -92,7 +108,7 @@ impl ErrorCategoryHandle {
 
 /// Get the next formatter of a chained error with `next_formatter`.
 #[inline(always)]
-pub fn get_next_formatter<C: ErrorCategory>(
+pub(crate) fn get_next_formatter<C: ErrorCategory>(
     next_formatter_index: Option<u8>,
 ) -> Option<ErrorCodeFormatter> {
     if let Some(idx) = next_formatter_index {
@@ -133,17 +149,19 @@ pub fn format_chained<C: ErrorCategory>(
     )
 }
 
-/// This marker type is used for any [`ErrorCategory::C0`] to [`C3`](ErrorCategory::C3)
+/// This marker type is used for any [`ErrorCategory::L0`] to [`ErrorCategory::L5`]
 /// which is unused.
 #[derive(Debug, Clone, Copy)]
 pub enum Unused {}
 
 impl ErrorCategory for Unused {
     const NAME: &'static str = "";
-    type C0 = Unused;
-    type C1 = Unused;
-    type C2 = Unused;
-    type C3 = Unused;
+    type L0 = Unused;
+    type L1 = Unused;
+    type L2 = Unused;
+    type L3 = Unused;
+    type L4 = Unused;
+    type L5 = Unused;
 
     fn chainable_category_formatters() -> &'static [ErrorCodeFormatter] {
         &[]

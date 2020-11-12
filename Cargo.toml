@@ -6,6 +6,13 @@ name = "embedded-error-chain"
 version = "0.1.0"
 authors = ["Dominik Gschwind <dominik.gschwind99@gmail.com>"]
 edition = "2018"
+license = "MIT"
+description = "Easy error handling in no-alloc and no-std environments"
+repository = "https://github.com/N3xed/embedded-error-chain"
+documentation = "https://docs.rs/embedded-error-chain"
+readme = "README.md"
+categories = ["embedded", "no-std", "rust-patterns"]
+keywords = ["embedded", "error-handling", "no-std", "no-alloc"]
 
 [dependencies]
 macros = { path = "macros", package = "embedded-error-chain-macros", version = "0.1" }
@@ -16,3 +23,7 @@ default = ["panic-on-overflow", "static_assertions"]
 
 panic-on-overflow = []
 nightly = []
+std = []
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

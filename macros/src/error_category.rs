@@ -1,5 +1,5 @@
 use super::str_placeholder;
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::{abort, emit_error};
 use quote::quote;
 use std::ops::Deref;
@@ -12,7 +12,7 @@ mod consts {
     /// The maximum value an error code can have.
     pub const MAX_ERROR_CODE: usize = 15;
     /// Maximum number of links.
-    pub const MAX_LINKS: usize = 4;
+    pub const MAX_LINKS: usize = 6;
 
     pub const FMT_PLACEHOLDER_SUMMARY: &str = "summary";
     pub const FMT_PLACEHOLDER_DETAILS: &str = "details";
@@ -26,24 +26,32 @@ mod consts {
 struct ErrorCategoryAttr {
     name: Option<String>,
     links: Vec<Path>,
+    /// This value is `true`, if an enum variant can be trivially converted to and from an
+    /// `ErrorCode`.
+    ///
+    /// For converting an error code back to a variant
+    /// `core::mem::transmute()` will be used. This is only valid if the size of the enum
+    /// type is equal to the size of `ErrorCode` (which is a `u8`). So for that to be
+    /// possible the enum must be `repr(u8)`. When the enum has no variants, `unreachable!()`
+    /// will be generated, because the type can never instantiated, so in that case it
+    /// being `repr(u8)` is optional.
+    is_repr_u8_compatible: bool,
 }
 
 impl ErrorCategoryAttr {
     /// Parse the `#[error_category(...)] attribute.
-    fn parse(input: &DeriveInput, more_than_one_variant: bool) -> ErrorCategoryAttr {
+    fn parse(input: &DeriveInput, has_variants: bool) -> ErrorCategoryAttr {
         // Get attribute `error_category`.
         // Error if multiple `error_category` attributes exist.
-        // Error if no `repr(u8)` attribute is found.
-        let attr = {
+        // Try to find `repr(u8)` attribute, if `has_variants` is `true`.
+        let (attr, is_repr_u8_compatible) = {
             let metas: Vec<_> = input
                 .attrs
                 .iter()
                 .filter_map(|a| a.parse_meta().map_err(|err| emit_error!(err)).ok())
                 .collect();
 
-            // Error if no `repr(u8)` attribute is found, except if the enum contains less
-            // than two variants.
-            {
+            let is_repr_u8_compatible = !has_variants || {
                 let contains_repr_u8 = metas
                     .iter()
                     .filter_map(|m| {
@@ -65,14 +73,8 @@ impl ErrorCategoryAttr {
                         })
                     })
                     .is_some();
-
-                if !contains_repr_u8 && more_than_one_variant {
-                    emit_error!(
-                        input.ident, "types that derive `ErrorCategory` must be `repr(u8)`";
-                        help = "add attribute `#[repr(u8)]`"
-                    );
-                }
-            }
+                contains_repr_u8
+            };
 
             // get all `error_category` attributes
             let attrs: Vec<_> = metas
@@ -91,7 +93,10 @@ impl ErrorCategoryAttr {
                 );
             }
 
-            attrs.first().map(Deref::deref).cloned()
+            (
+                attrs.first().map(Deref::deref).cloned(),
+                is_repr_u8_compatible,
+            )
         };
 
         if let Some(attr) = attr {
@@ -147,9 +152,16 @@ impl ErrorCategoryAttr {
                 })
                 .unwrap_or_else(Vec::new);
 
-            ErrorCategoryAttr { name, links }
+            ErrorCategoryAttr {
+                name,
+                links,
+                is_repr_u8_compatible,
+            }
         } else {
-            ErrorCategoryAttr::default()
+            ErrorCategoryAttr {
+                is_repr_u8_compatible,
+                ..ErrorCategoryAttr::default()
+            }
         }
     }
 
@@ -473,11 +485,6 @@ impl ErrorVariant {
     }
 }
 
-struct ErrorCategory {
-    enum_type: Ident,
-    attr: ErrorCategoryAttr,
-}
-
 enum ErrorCategoryArgError {
     InvalidArg(NestedMeta),
     TooManyNameArgs(MetaNameValue),
@@ -496,7 +503,7 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
     .map(ErrorVariant::parse)
     .collect();
     // parse the optional `#[error_category(...)]` attribute
-    let error_category_attr = ErrorCategoryAttr::parse(&input, variants.len() > 1);
+    let error_category_attr = ErrorCategoryAttr::parse(&input, !variants.is_empty());
 
     let enum_ident = input.ident;
     let name_str = error_category_attr
@@ -556,40 +563,27 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
         v.format_str = Some(format_str);
     }
 
-    let discriminant_value_checks: Vec<_> = variants.iter().map(|variant| {
-        let max_val_plus_one = (consts::MAX_ERROR_CODE as isize) + 1;
-        let variant_name = variant.variant_name.clone();
-
-        let non_negative_msg = format!("`{}::{}` variant discriminant must not be negative", enum_ident.to_string(), variant_name.to_string());
-        let err_msg = format!("`{}::{}` variant discriminant must be less than {}", enum_ident.to_string(), variant_name.to_string(), max_val_plus_one);
-        quote! {
-            ::embedded_error_chain::const_assert!((#enum_ident::#variant_name as isize) >= 0, #non_negative_msg);
-            ::embedded_error_chain::const_assert!((#enum_ident::#variant_name as isize) < #max_val_plus_one, #err_msg);
-        }
-    }).collect();
-
     let error_category_impl = {
-        let links_and_unused: Vec<_> = links
+        let assoc_types: Vec<_> = links
             .iter()
             .cloned()
             .chain(
                 std::iter::repeat(parse_quote! { ::embedded_error_chain::marker::Unused })
                     .take(consts::MAX_LINKS - links.len()),
             )
+            .enumerate()
+            .map(|(i, t)| {
+                let ident = Ident::new(&format!("L{}", i), Span::call_site());
+                
+                quote! { type #ident = #t; }
+            })
             .collect();
 
-        let [c0, c1, c2, c3] = match &links_and_unused[..consts::MAX_LINKS] {
-            [c0, c1, c2, c3, ..] => [c0, c1, c2, c3],
-            _ => unreachable!(),
-        };
         quote! {
             impl ::embedded_error_chain::ErrorCategory for #enum_ident {
                 const NAME: &'static str = #name_str;
 
-                type C0 = #c0;
-                type C1 = #c1;
-                type C2 = #c2;
-                type C3 = #c3;
+                #(#assoc_types)*
 
                 fn chainable_category_formatters() -> &'static [::embedded_error_chain::ErrorCodeFormatter] {
                     &[#( ::embedded_error_chain::format_chained::<#links> ),*]
@@ -598,69 +592,88 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
         }
     };
 
-    let from_error_code_impl = {
-        let variant_vals = {
-            let vals: Vec<_> = variants
-                .iter()
-                .map(|v| {
-                    let variant_name = v.variant_name.clone();
-                    quote! {
-                        (#enum_ident::#variant_name as ::embedded_error_chain::ErrorCode)
-                    }
-                })
-                .collect();
+    let from_into_impls = if error_category_attr.is_repr_u8_compatible {
+        let discriminant_value_checks: Vec<_> = variants.iter().map(|variant| {
+            let max_val_plus_one = (consts::MAX_ERROR_CODE as isize) + 1;
+            let variant_name = variant.variant_name.clone();
 
-            if vals.is_empty() {
-                vec![quote! { val }]
+            let non_negative_msg = format!("`{}::{}` variant discriminant must not be negative", enum_ident.to_string(), variant_name.to_string());
+            let err_msg = format!("`{}::{}` variant discriminant must be less than {}", enum_ident.to_string(), variant_name.to_string(), max_val_plus_one);
+            quote! {
+                ::embedded_error_chain::const_assert!((#enum_ident::#variant_name as isize) >= 0, #non_negative_msg);
+                ::embedded_error_chain::const_assert!((#enum_ident::#variant_name as isize) < #max_val_plus_one, #err_msg);
+            }
+        }).collect();
+
+        let from_error_code_impl = {
+            let variant_vals = {
+                let vals: Vec<_> = variants
+                    .iter()
+                    .map(|v| {
+                        let variant_name = v.variant_name.clone();
+                        quote! {
+                            (#enum_ident::#variant_name as ::embedded_error_chain::ErrorCode)
+                        }
+                    })
+                    .collect();
+
+                if vals.is_empty() {
+                    vec![quote! { val }]
+                } else {
+                    vals
+                }
+            };
+
+            let logic = if variants.is_empty() {
+                quote! { unreachable!() }
+            } else if variants.len() == 1 {
+                let variant_name = variants[0].variant_name.clone();
+
+                quote! { #enum_ident::#variant_name }
             } else {
-                vals
+                quote! {
+                    unsafe { ::embedded_error_chain::utils::mem::transmute::<u8, Self>(val as u8) }
+                }
+            };
+
+            quote! {
+                #[automatically_derived]
+                impl ::embedded_error_chain::utils::From<::embedded_error_chain::ErrorCode> for #enum_ident {
+                    fn from(val: ::embedded_error_chain::ErrorCode) -> #enum_ident {
+                        debug_assert!(
+                            #(#variant_vals == val)||*,
+                            "tried to convert invalid error code to category type"
+                        );
+                        #logic
+                    }
+                }
             }
         };
 
-        let logic = if variants.is_empty() {
-            quote! { unreachable!() }
-        } else if variants.len() == 1 {
-            let variant_name = variants[0].variant_name.clone();
+        let into_error_code_impl = {
+            let logic = if variants.is_empty() {
+                quote! { match self {} }
+            } else {
+                quote! { self as ::embedded_error_chain::ErrorCode }
+            };
+
             quote! {
-                #enum_ident::#variant_name
-            }
-        } else {
-            quote! {
-                unsafe { ::core::mem::transmute::<u8, Self>(val as u8) }
+                #[automatically_derived]
+                impl ::embedded_error_chain::utils::Into<::embedded_error_chain::ErrorCode> for #enum_ident {
+                    fn into(self) -> ::embedded_error_chain::ErrorCode {
+                        #logic
+                    }
+                }
             }
         };
 
         quote! {
-            impl From<::embedded_error_chain::ErrorCode> for #enum_ident {
-                fn from(val: ::embedded_error_chain::ErrorCode) -> #enum_ident {
-                    debug_assert!(
-                        #(#variant_vals == val)||*,
-                        "tried to convert invalid error code to category type"
-                    );
-                    #logic
-                }
-            }
+            #(#discriminant_value_checks)*
+            #from_error_code_impl
+            #into_error_code_impl
         }
-    };
-
-    let into_error_code_impl = {
-        let logic = if variants.is_empty() {
-            quote! {
-                match self {}
-            }
-        } else {
-            quote! {
-                self as ::embedded_error_chain::ErrorCode
-            }
-        };
-
-        quote! {
-            impl Into<::embedded_error_chain::ErrorCode> for #enum_ident {
-                fn into(self) -> ::embedded_error_chain::ErrorCode {
-                    #logic
-                }
-            }
-        }
+    } else {
+        quote!()
     };
 
     let fmt_debug_impl = {
@@ -688,8 +701,10 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
             .collect();
 
         quote! {
-            impl ::core::fmt::Debug for #enum_ident {
-                fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+            #[automatically_derived]
+            impl ::embedded_error_chain::utils::Debug for #enum_ident {
+                fn fmt(&self, f: &mut ::embedded_error_chain::utils::fmt::Formatter<'_>) 
+                -> ::embedded_error_chain::utils::fmt::Result {
                     match *self {
                         #(#match_arms),*
                     }
@@ -699,10 +714,8 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
     };
 
     quote! {
-        #(#discriminant_value_checks)*
         #error_category_impl
-        #from_error_code_impl
-        #into_error_code_impl
+        #from_into_impls
         #fmt_debug_impl
     }
 }

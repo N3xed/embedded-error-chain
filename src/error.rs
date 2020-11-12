@@ -9,13 +9,17 @@ use core::{
     iter::FusedIterator,
 };
 
+/// An error that consists of an [`ErrorCode`] that belongs to an [`ErrorCategory`] and
+/// optionally up to `4` chained error codes of different types that implement
+/// [`ErrorCategory`].
 #[repr(transparent)]
 pub struct Error<C>(ErrorData, PhantomData<C>);
 
-impl<C: ErrorCategory> Error<C> {
-    /// Create a new [`Error`] with an empty chain from the supplied `error_code`.
-    pub fn new(error_code: C) -> Error<C> {
-        Error(ErrorData::new(error_code.into()), PhantomData)
+impl<C> Error<C> {
+    /// Create a new [`Error`] with an empty chain from the supplied raw `error_code`.
+    #[inline(always)]
+    pub const fn new_raw(error_code: ErrorCode) -> Error<C> {
+        Error(ErrorData::new(error_code), PhantomData)
     }
 }
 
@@ -29,6 +33,12 @@ impl<C> Error<C> {
 }
 
 impl<C: ErrorCategory> Error<C> {
+    /// Create a new [`Error`] with an empty chain from the supplied `error_code`.
+    #[inline(always)]
+    pub fn new(error_code: C) -> Error<C> {
+        Error(ErrorData::new(error_code.into()), PhantomData)
+    }
+
     /// Get the error code of the latest error.
     #[inline]
     pub fn code(&self) -> C {
@@ -118,12 +128,15 @@ impl Iterator for ErrorIter {
 impl FusedIterator for ErrorIter {}
 
 impl<C: ErrorCategory> Debug for Error<C> {
+    /// Debug format this error and its chain.
+    ///
+    /// Error message example:
+    /// ```txt
+    /// ControlTaskError(0): init failed
+    /// - ICM20689Error(0): init failed
+    /// - SpiError(0): bus error
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // Error message example:
-        // > ControlTaskError(0): init failed
-        // > - ICM20689Error(0): init failed
-        // > - SpiError(0): bus error
-
         let ec = self.0.code();
         let err: C = ec.into();
         writeln!(f, "{}({}): {:?}", C::NAME, ec, err)?;
@@ -142,41 +155,55 @@ impl<C: ErrorCategory> Debug for Error<C> {
     }
 }
 
-pub trait ChainError<I: ErrorCategory, O: ErrorCategory, TAG> {
-    /// Chain this [`Error`] with the supplied `error_code`.
+/// A trait that allows chaining of [`Error`] values.
+pub trait ChainError<I: ErrorCategory, O: ErrorCategory, Tag> {
+    /// Chain this error with the supplied `error_code`.
     fn chain(self, error_code: O) -> Error<O>;
 }
 
-pub trait ResultChainError<T, I: ErrorCategory, O: ErrorCategory, TAG> {
+/// A trait that allows chaining if a [`Result`] contains an [`Error`] value.
+pub trait ResultChainError<T, I: ErrorCategory, O: ErrorCategory, Tag> {
     fn chain_err(self, error_code: O) -> Result<T, Error<O>>;
 }
 
 macro_rules! impl_chain_error {
     ($([$t:ident, $idx:literal]),*) => {
         $(
-            impl<C: ErrorCategory> ChainError<C::$t, C, marker::$t> for Error<C::$t> {
-                #[inline]
+            impl<C: ErrorCategory> ChainError<C::$t, C, (marker::$t, marker::Error_t)> for Error<C::$t> {
+                #[inline(always)]
                 fn chain(self, error_code: C) -> Error<C> {
-                    let mut data = self.0;
-                    data.chain(error_code.into(), $idx);
+                    let mut data: ErrorData = self.0;
+                    ErrorData::chain(&mut data, error_code.into(), $idx);
                     Error(data, PhantomData)
                 }
             }
 
-            impl<T, C: ErrorCategory> ResultChainError<T, C::$t, C, marker::$t> for Result<T, Error<C::$t>> {
-                #[inline]
-                fn chain_err(self, error_code: C) -> Result<T, Error<C>> {
-                    match self {
-                        Err(err) => Err(err.chain(error_code)),
-                        Ok(val) => Ok(val),
-                    }
+            impl<C: ErrorCategory> ChainError<C::$t, C, (marker::$t, marker::Concrete_t)> for C::$t {
+                #[inline(always)]
+                fn chain(self, error_code: C) -> Error<C> {
+                    Error::new(self).chain(error_code)
                 }
             }
         )+
     };
 }
 
-impl_chain_error!([C0, 0], [C1, 1], [C2, 2], [C3, 3]);
+impl_chain_error!([L0, 0], [L1, 1], [L2, 2], [L3, 3], [L4, 4], [L5, 5]);
+
+impl<OK, ERR, I, O, TAG> ResultChainError<OK, I, O, TAG> for Result<OK, ERR>
+where
+    I: ErrorCategory,
+    O: ErrorCategory,
+    ERR: ChainError<I, O, TAG>,
+{
+    #[inline]
+    fn chain_err(self, error_code: O) -> Result<OK, Error<O>> {
+        match self {
+            Err(err) => Err(err.chain(error_code)),
+            Ok(val) => Ok(val),
+        }
+    }
+}
 
 impl<C: ErrorCategory> PartialEq for Error<C> {
     fn eq(&self, other: &Error<C>) -> bool {
@@ -198,3 +225,10 @@ impl<C: ErrorCategory> Clone for Error<C> {
 }
 
 impl<C: ErrorCategory> Copy for Error<C> {}
+
+impl<C: ErrorCategory> From<C> for Error<C> {
+    #[inline(always)]
+    fn from(error_code: C) -> Self {
+        Error::new(error_code)
+    }
+}

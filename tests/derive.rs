@@ -3,6 +3,7 @@ use embedded_error_chain::*;
 
 #[derive(Clone, Copy, ErrorCategory)]
 #[error_category(links(SeperateError))]
+#[repr(u8)]
 enum OtherError {
     Extreme = 4,
 }
@@ -34,6 +35,7 @@ enum TestError {
 
 #[derive(Clone, Copy, ErrorCategory)]
 #[error_category(links(OtherError, TestError))]
+#[repr(u8)]
 enum SeperateError {
     /// Very bad
     ///

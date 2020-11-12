@@ -4,9 +4,9 @@ use super::ErrorCode;
 ///
 /// This is equal to the amount of [`ErrorData::chain()`] (or
 /// [`ChainError::chain()`](super::ChainError::chain()),
-/// [`ResultExt::chain_err()`](super::ResultExt::chain_err())) you can make before the
-/// chain overflows, and it either panics (if the feature `panic-on-overflow` is enabled)
-/// or the oldest error code gets lost.
+/// [`ResultChainError::chain_err()`](super::ResultChainError::chain_err())) you can make
+/// before the chain overflows, and it either panics (if the feature `panic-on-overflow`
+/// is enabled) or the oldest error code gets lost.
 pub const ERROR_CHAIN_LEN: usize = 4;
 /// The entire data of the error and its error code chain.
 #[derive(Clone, Copy, PartialEq, Eq)]
