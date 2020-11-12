@@ -1,4 +1,7 @@
 /*!
+[![Crates.io](https://img.shields.io/crates/v/embedded-error-chain.svg)](https://crates.io/crates/embedded-error-chain)
+[![API reference](https://docs.rs/embedded-error-chain/badge.svg)](https://docs.rs/embedded-error-chain/)
+
 Easy error handling for embedded devices (`no_alloc` and `no_std`).
 
 A rust library implementing easy error handling for embedded devices. An [`Error`] value is
