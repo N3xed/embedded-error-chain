@@ -16,12 +16,10 @@ keywords = ["embedded", "error", "no-std", "no-alloc"]
 
 [dependencies]
 macros = { path = "macros", package = "embedded-error-chain-macros", version = "0.1" }
-static_assertions = { version = "1.1.0", optional = true }
 
 [features]
-default = ["panic-on-overflow", "stable"]
+default = ["panic-on-overflow"]
 
 panic-on-overflow = []
 nightly = []
-stable = ["static_assertions"]
 std = []

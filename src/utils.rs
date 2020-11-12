@@ -20,13 +20,17 @@ macro_rules! const_assert {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! const_assert {
-    ($cond:expr, $msg:literal) => {
-        $crate::utils::const_assert!($cond);
+    ($exp:expr, $msg:expr) => {
+        #[deny(const_err)]
+        #[allow(unused_must_use)]
+        const _: () = {
+            const ASSERT: bool = $exp;
+            ASSERT as usize - 1usize;
+
+            ()
+        };
     };
 }
-
-#[cfg(not(feature = "nightly"))]
-pub use static_assertions::*;
 
 #[cfg(feature = "std")]
 mod types {
