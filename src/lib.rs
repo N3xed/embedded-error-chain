@@ -1,14 +1,10 @@
 /*!
-[![Crates.io](https://img.shields.io/crates/v/embedded-error-chain.svg)](https://crates.io/crates/embedded-error-chain)
-[![API reference](https://docs.rs/embedded-error-chain/badge.svg)](https://docs.rs/embedded-error-chain/)
+Easy error handling for embedded devices (no `liballoc` and `no_std`).
 
-Easy error handling for embedded devices (`no_alloc` and `no_std`).
-
-A rust library implementing easy error handling for embedded devices. An [`Error`] value is
-only a single [`u32`] in size and supports up to 4 chained error codes. Each error code can
-have a value from `0` to `15` (4 bits). All error codes come from an enum that implements
-the [`ErrorCategory`] trait (a derive macro exists). This trait is also used to implement
-debug printing and equality for each error code.
+An [`Error`] value is only a single [`u32`] in size and supports up to 4 chained error
+codes. Each error code can have a value from `0` to `15` (4 bits). All error codes come
+from an enum that implements the [`ErrorCategory`] trait (a derive macro exists). This
+trait is also used to implement debug printing and equality for each error code.
 
 This library was inspired by libraries such as [error-chain](https://crates.io/crates/error-chain)
 and [anyhow](https://crates.io/crates/anyhow), though its goal is to work in `no_std` and `no_alloc`
@@ -139,7 +135,7 @@ pub mod marker {
     #[allow(non_camel_case_types)]
     pub struct Concrete_t;
 
-    pub use super::error_category::Unused;
+    pub use crate::error_category::Unused;
 }
 
 /// An error code.
@@ -206,4 +202,4 @@ pub type ErrorCode = u8;
 /// #[derive(Clone, Copy, ErrorCategory)]
 /// enum YetEmptyError {}
 /// ```
-pub use macros::ErrorCategory;
+pub use embedded_error_chain_macros::ErrorCategory;
