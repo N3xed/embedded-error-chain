@@ -3,7 +3,7 @@ members = ["macros"]
 
 [package]
 name = "embedded-error-chain"
-version = "1.0.0-rc1"
+version = "1.0.0"
 authors = ["Dominik Gschwind <dominik.gschwind99@gmail.com>"]
 edition = "2018"
 license = "MIT"
@@ -15,7 +15,7 @@ categories = ["embedded", "no-std", "rust-patterns"]
 keywords = ["embedded", "error", "no-std", "no-alloc"]
 
 [dependencies]
-embedded-error-chain-macros = { path = "macros", package = "embedded-error-chain-macros", version = "1.0.0-rc1" }
+embedded-error-chain-macros = { path = "macros", package = "embedded-error-chain-macros", version = "1.0" }
 
 [features]
 default = ["panic-on-overflow"]

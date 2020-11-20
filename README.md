@@ -1,6 +1,6 @@
 # embedded-error-chain
 
-[![build](https://github.com/N3xed/embedded-error-chain/workflows/ci/badge.svg)](https://github.com/N3xed/embedded-error-chain/actions)
+[![build](https://github.com/N3xed/embedded-error-chain/workflows/CI/badge.svg)](https://github.com/N3xed/embedded-error-chain/actions)
 [![crates.io](https://img.shields.io/crates/v/embedded-error-chain.svg)](https://crates.io/crates/embedded-error-chain)
 [![docs](https://docs.rs/embedded-error-chain/badge.svg)](https://docs.rs/embedded-error-chain/)
 
