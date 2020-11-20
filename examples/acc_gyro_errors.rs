@@ -23,15 +23,14 @@ enum GyroAccError {
     InvalidValue,
 }
 
-#[derive(Clone, Copy, ErrorCategory)]
-#[error_category(links(GyroAccError))]
-#[repr(u8)]
-enum CalibrationError {
-    Inner,
-}
-
 fn main() {
     if let Err(err) = calibrate() {
+        // log the error
+        println!("{:?}", err);
+        // ...
+    }
+
+    if let Err(err) = gyro_acc_readout_check() {
         // log the error
         println!("{:?}", err);
         // ...
@@ -40,11 +39,11 @@ fn main() {
     let _readout = match gyro_acc_readout() {
         Ok(val) => val,
         Err(err) => {
+            println!("{:?}", err);
             if let Some(_spi_error) = err.code_of_category::<SpiError>() {
                 // try to fix it
                 0
-            }
-            else {
+            } else {
                 panic!("unfixable spi error");
             }
         }
@@ -61,10 +60,14 @@ fn gyro_acc_init() -> Result<(), Error<GyroAccError>> {
 }
 
 fn gyro_acc_readout() -> Result<u32, Error<GyroAccError>> {
+    Err(SpiError::BusError.chain(GyroAccError::ReadoutFailed))
+}
+
+fn gyro_acc_readout_check() -> Result<u32, Error<GyroAccError>> {
     Err(SpiError::BusError.chain(GyroAccError::InvalidValue))
 }
 
-fn calibrate() -> Result<(), Error<CalibrationError>> {
-    gyro_acc_init().chain_err(CalibrationError::Inner)?;
+fn calibrate() -> Result<(), DynError> {
+    gyro_acc_init()?;
     Ok(())
 }

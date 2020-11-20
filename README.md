@@ -1,21 +1,30 @@
 # embedded-error-chain
 
-[![Crates.io](https://img.shields.io/crates/v/embedded-error-chain.svg)](https://crates.io/crates/embedded-error-chain)
-[![API reference](https://docs.rs/embedded-error-chain/badge.svg)](https://docs.rs/embedded-error-chain/)
+[![build](https://github.com/N3xed/embedded-error-chain/workflows/ci/badge.svg)](https://github.com/N3xed/embedded-error-chain/actions)
+[![crates.io](https://img.shields.io/crates/v/embedded-error-chain.svg)](https://crates.io/crates/embedded-error-chain)
+[![docs](https://docs.rs/embedded-error-chain/badge.svg)](https://docs.rs/embedded-error-chain/)
 
 Easy error handling for embedded devices (no `liballoc` and `no_std`).
 
-A rust library implementing easy error handling for embedded devices. An `Error` value is
-only a single `u32` in size and supports up to 4 chained error codes. Each error code can
-have a value from `0` to `15` (4 bits). All error codes come from an enum that implements
-the `ErrorCategory` trait (a derive macro exists). This trait is also used to implement
-debug printing and equality for each error code.
+Errors are represented by error codes and come from enums that implement the
+`ErrorCategory` trait (a derive macro exists), which is used for custom debug
+printing per error code among other things. Each error code can have a value from `0`
+to `15` (4 bits) and you can chain an error with up to four different error codes of
+different categories.
 
-This library was inspired by libraries such as [error-chain](https://crates.io/crates/error-chain)
-and [anyhow](https://crates.io/crates/anyhow), though its goal is to work in `no_std` and `no_alloc`
-environments with very little memory overhead.
+The `Error` type encapsulates an error code and error chain, and is only a single
+`u32` in size. There is also an untyped `DynError` type, which unlike `Error`
+does not have a type parameter for the current error code. Its size is a `u32` +
+pointer (`usize`), which can be used to forward source errors of different categories
+to the caller.
 
-### Example
+This library was inspired by libraries such as
+[error-chain](https://crates.io/crates/error-chain),
+[anyhow](https://crates.io/crates/anyhow) and
+[thiserror](https://crates.io/crates/thiserror), though it was made to work in `no_std`
+**and** no `liballoc` environments with very little memory overhead.
+
+## Example
 ```rust
 use embedded_error_chain::prelude::*;
 
@@ -40,13 +49,6 @@ enum GyroAccError {
     /// Value must be in range [0, 256)
     #[error("{variant}: {summary}")]
     InvalidValue,
-}
-
-#[derive(Clone, Copy, ErrorCategory)]
-#[error_category(links(GyroAccError))]
-#[repr(u8)]
-enum CalibrationError {
-    Inner,
 }
 
 fn main() {
@@ -83,8 +85,9 @@ fn gyro_acc_readout() -> Result<u32, Error<GyroAccError>> {
     Err(SpiError::BusError.chain(GyroAccError::InvalidValue))
 }
 
-fn calibrate() -> Result<(), Error<CalibrationError>> {
-    gyro_acc_init().chain_err(CalibrationError::Inner)?;
+fn calibrate() -> Result<(), DynError> {
+    gyro_acc_init()?;
+    // other stuff...
     Ok(())
 }
 ```

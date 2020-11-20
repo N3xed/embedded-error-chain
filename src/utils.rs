@@ -20,7 +20,7 @@ macro_rules! const_assert {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! const_assert {
-    ($exp:expr, $msg:expr) => {
+    ($exp:expr, $msg:literal) => {
         #[deny(const_err)]
         #[allow(unused_must_use)]
         const _: () = {

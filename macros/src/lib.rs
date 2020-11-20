@@ -1,7 +1,5 @@
 //! Derive macros for embedded-error-chain.
-
 #![crate_type = "proc-macro"]
-#![allow(broken_intra_doc_links)]
 
 use proc_macro::TokenStream;
 use proc_macro_error::proc_macro_error;

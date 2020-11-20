@@ -13,7 +13,10 @@ pub fn replace_all_placeholders(
     let iter = StrPlaceholderRangeIter::new(placeholder, left_delim, right_delim);
 
     let mut next_range = 0..string.len();
-    while let Some(range) = iter.next_range(&string[next_range]) {
+    while let Some(range) = iter.next_range(&string[next_range.clone()]) {
+        let last_start = next_range.start;
+        let range = (range.start + last_start)..(range.end + last_start);
+
         string.replace_range(range.clone(), replace_with);
         next_range = (range.start + replace_with.len())..string.len();
     }
@@ -56,6 +59,7 @@ impl<'a> StrPlaceholderRangeIter<'a> {
     }
 
     pub fn next_range(&self, mut string: &str) -> Option<Range<usize>> {
+        let mut offset = 0;
         loop {
             if let Some(start_index) = string.find(self.placeholder) {
                 // check that on the left side of the placeholder are an odd number of
@@ -80,9 +84,11 @@ impl<'a> StrPlaceholderRangeIter<'a> {
 
                 if is_left_delim && is_right_delim {
                     break Some(
-                        (start_index - self.left_delim_len)..(end_index + self.right_delim_len),
+                        (start_index - self.left_delim_len + offset)
+                            ..(end_index + self.right_delim_len + offset),
                     );
                 } else {
+                    offset += end_index;
                     string = &string[end_index..];
                 }
             } else {

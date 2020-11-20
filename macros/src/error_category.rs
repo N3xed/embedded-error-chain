@@ -1,4 +1,4 @@
-use super::str_placeholder;
+use crate::str_placeholder;
 use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error::{abort, emit_error};
 use quote::quote;
@@ -574,7 +574,7 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
             .enumerate()
             .map(|(i, t)| {
                 let ident = Ident::new(&format!("L{}", i), Span::call_site());
-                
+
                 quote! { type #ident = #t; }
             })
             .collect();
@@ -703,7 +703,7 @@ pub fn derive_error_category(input: DeriveInput) -> TokenStream {
         quote! {
             #[automatically_derived]
             impl ::embedded_error_chain::utils::Debug for #enum_ident {
-                fn fmt(&self, f: &mut ::embedded_error_chain::utils::fmt::Formatter<'_>) 
+                fn fmt(&self, f: &mut ::embedded_error_chain::utils::fmt::Formatter<'_>)
                 -> ::embedded_error_chain::utils::fmt::Result {
                     match *self {
                         #(#match_arms),*

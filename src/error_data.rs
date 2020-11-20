@@ -1,6 +1,9 @@
-use super::ErrorCode;
+#[allow(unused_imports)]
+use crate::ErrorCategory;
+use crate::ErrorCode;
 
-/// The maximum amount of error codes that can be chained to an [`Error`](super::Error).
+/// The maximum amount of error codes that can be chained to an [`Error`](crate::Error) or
+/// [`DynError`](crate::DynError).
 ///
 /// This is equal to the amount of [`ErrorData::chain()`] (or
 /// [`ChainError::chain()`](super::ChainError::chain()),
@@ -9,20 +12,71 @@ use super::ErrorCode;
 /// is enabled) or the oldest error code gets lost.
 pub const ERROR_CHAIN_LEN: usize = 4;
 /// The entire data of the error and its error code chain.
+///
+/// This is a wrapper over a bit-packed [`u32`] value that contains five 4-bit wide
+/// [`ErrorCode`](crate::ErrorCode)s and four 3-bit wide
+/// [`ErrorCodeFormatter`](crate::ErrorCodeFormatter) indices.
+///
+/// The bit layout of the underlying `u32` value is a follows:
+/// - Bits `b0..b20` contain 5 error codes, each error code is 4 bits.
+///   - `b0..b4`: the error code of the current error (returned by [`code()`](Self::code()))
+///   - `b4..b8`: chained error code 0
+///   - `b8..b12`: chained error code 1
+///   - `b12..b16`: chained error code 2
+///   - `b16..b20`: chained error code 3
+/// - Bits `b20..b32` contain 4 formatter indices, each index has 3 bits.
+///   - `b20..b23`: formatter `index + 1` of chained error 0 (`0` means not present)
+///                 (returned by [`first_formatter_index()`](Self::first_formatter_index()))
+///   - `b23..b26`: formatter `index + 1` of chained error 1 (`0` means not present)
+///   - `b26..b29`: formatter `index + 1` of chained error 2 (`0` means not present)
+///   - `b29..b32`: formatter `index + 1` of chained error 3 (`0` means not present)
+///
+/// The first [error code](crate::ErrorCode) represents the most recent or current error.
+/// The next four [error codes](crate::ErrorCode) with the formatter indices represent the
+/// error chain which can be empty. The error chain (as described in the documentation of
+/// [`Error`](crate::Error)) is a singly linked list. As much of the data used for error
+/// reporting is constant or static, so that no dynamic allocation is needed, to make
+/// runtime memory usage as small as possible and to make it cheap to copy an error value
+/// around. This is also the case with the error chain.
+///
+/// Every [`ErrorCode`] value belongs to a type that implements the trait
+/// [`ErrorCategory`]. Using this trait it is possible to print a custom name and
+/// additional information for every [`ErrorCode`] value. Only the [`ErrorCategory`] of
+/// the most recent error code has to be known, all other [error
+/// categories](ErrorCategory) can then be retrieved by iterating over the linked list.
+/// The [`ErrorCategory`] is also needed for the linked list to be possible.
+///
+/// Every formatter index in the chain represents the
+/// [`ErrorCodeFormatter`](crate::ErrorCodeFormatter) function of the [error
+/// category](ErrorCategory) and error code. A formatter function is retrieved by calling
+/// the formatter function of the previous error code, and passing it the index of the
+/// next formatter function. The called formatter function gets the next formatter
+/// function from from the slice returned by
+/// [`ErrorCategory::chainable_category_formatters()`] using the next formatter index.
+/// This is only possible if the [`ErrorCategory`] associated with the called formatter
+/// function is linked to the [`ErrorCategory`] of the next error code in the chain.
+///
+/// An [error category](ErrorCategory) `A` is linked to an [error category](ErrorCategory)
+/// `B` if at least one of the [`A::L1`](ErrorCategory::L1) to
+/// [`A::L5`](ErrorCategory::L1) associated types is `B` and the `n`th element (where `n`
+/// is the digit of the [`A::Ln`](ErrorCategory::L1) associated type used) of the slice
+/// returned by
+/// [`A::chainable_category_formatters()`](ErrorCategory::chainable_category_formatters())
+/// is the [`ErrorCodeFormatter`](crate::ErrorCodeFormatter) function for `B`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ErrorData {
     /// Contains the entire data of the error and its error code chain.
     ///
     /// - Bits `b0..b20` contain 5 error codes, each error code is 4 bits.
-    ///   - `b0..b4`: the error code of error (returned by [`Self::code()`])
-    ///   - `b4..b8`: chained error 0
-    ///   - `b8..b12`: chained error 1
-    ///   - `b12..b16`: chained error 2
-    ///   - `b16..b20`: chained error 3
-    /// - Bits `b20..b32` contain 4 category indices, each index has 3 bits.
+    ///   - `b0..b4`: the error code of the current error (returned by `Self::code()`)
+    ///   - `b4..b8`: chained error code 0
+    ///   - `b8..b12`: chained error code 1
+    ///   - `b12..b16`: chained error code 2
+    ///   - `b16..b20`: chained error code 3
+    /// - Bits `b20..b32` contain 4 formatter indices, each index has 3 bits.
     ///   - `b20..b23`: formatter `index + 1` of chained error 0 (`0` means not present)
-    ///                 (returned by [`Self::first_formatter_index()`])
+    ///                 (returned by `Self::first_formatter_index()`)
     ///   - `b23..b26`: formatter `index + 1` of chained error 1 (`0` means not present)
     ///   - `b26..b29`: formatter `index + 1` of chained error 2 (`0` means not present)
     ///   - `b29..b32`: formatter `index + 1` of chained error 3 (`0` means not present)
@@ -60,7 +114,7 @@ mod consts {
 }
 
 impl ErrorData {
-    /// Create new `ErrorData` that conains the supplied `error_code` and has an empty chain.
+    /// Create new `ErrorData` that contains the supplied `error_code` and has an empty chain.
     pub const fn new(error_code: ErrorCode) -> ErrorData {
         ErrorData {
             data: error_code as u32 & consts::CODE_MASK[0],
@@ -76,14 +130,13 @@ impl ErrorData {
         old_ec
     }
 
-    /// Get the error code of the error.
-    #[inline(always)]
+    /// Get the most recent error code of the error.
+    #[inline]
     pub fn code(&self) -> ErrorCode {
         (self.data & consts::CODE_MASK[0]) as ErrorCode
     }
 
     /// Get the first formatter index in the chain if available.
-    #[inline(always)]
     pub fn first_formatter_index(&self) -> Option<u8> {
         let fmt_index =
             ((self.data & consts::FORMATTER_MASK[0]) >> consts::FORMATTER_BITOFFSET) as u8;
@@ -94,9 +147,7 @@ impl ErrorData {
         }
     }
 
-    /// The number of chained error codes (does not include the error code representing
-    /// this error).
-    #[inline]
+    /// Get the number of chained error codes.
     pub fn chain_len(&self) -> usize {
         // If the formatter is zero that means it is not present.
         let mut mask = consts::FORMATTER_MASK[0];
@@ -110,18 +161,20 @@ impl ErrorData {
         ERROR_CHAIN_LEN
     }
 
-    /// Wether the error chain is full.
+    /// Whether the error chain is full.
     #[inline]
     pub fn chain_full(&self) -> bool {
         self.chain_len() == ERROR_CHAIN_LEN
     }
 
-    /// Push onto the front of the error chain, return the back of the chain before and if
-    /// it gets overwritten (when the chain overflows).
+    /// Prepend the current error code to the front of the error chain and set the current error
+    /// code to `error_code`.
+    ///
+    /// Returns the back of the error chain before modification if it gets overwritten by
+    /// this operation (when the chain overflows).
     ///
     /// Note: `error_code` is masked to the first 4 bits and `category_index` is masked to
     /// the first 3 bits.
-    #[inline(always)]
     pub fn push_front(
         &mut self,
         error_code: ErrorCode,
@@ -154,9 +207,22 @@ impl ErrorData {
         result
     }
 
-    /// Chain this error with a new error specified by `error_code` and `category_index`.
+    /// Chain this error with a new error specified by `error_code`.
     ///
-    /// TODO: document
+    /// - `error_code`: The new error code that is set as the current one.
+    /// - `category_index`: The index of the
+    ///   [`ErrorCodeFormatter`](crate::ErrorCodeFormatter) in the slice returned by
+    ///   [`T::chainable_category_formatters()`](ErrorCategory::chainable_category_formatters())
+    ///   where `T` is the [`error category`](ErrorCategory) that the most recent error code
+    ///   before this operation belongs to.
+    ///
+    /// This prepends the current error code to the front of the error chain and sets
+    /// `error_code` as the new current error code.
+    ///
+    /// ### Panics
+    /// If the feature `panic-on-overflow` is enabled and the error chain is already full
+    /// before this operation, this function will panic. If the feature is not enabled and
+    /// the error chain is already full, the last error in the chain will be lost.
     pub fn chain(&mut self, error_code: ErrorCode, category_index: u8) {
         // Returns the last error in the chain if it's full.
         let overflow = self.push_front(error_code, category_index);
@@ -168,7 +234,7 @@ impl ErrorData {
         );
     }
 
-    /// Iterate over the error chain (excluding the error code returned by [`ErrorData::code()`]).
+    /// Iterate over the error chain.
     pub(crate) fn iter_chain(&self) -> ErrorDataChainIter {
         ErrorDataChainIter {
             error_codes: (self.data & consts::ALL_CODE_MASK) >> consts::CODE_WIDTH,
@@ -177,7 +243,7 @@ impl ErrorData {
     }
 }
 
-/// An iterator over the error chain (excluding the error code returned by [`ErrorData::code()`]).
+/// An iterator over the error chain.
 ///
 /// For every iteration a tuple is returned which contains:
 /// - `0`: The error code at the current chain position.
